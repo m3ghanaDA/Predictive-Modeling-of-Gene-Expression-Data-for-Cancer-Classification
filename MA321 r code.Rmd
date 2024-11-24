@@ -1,0 +1,1370 @@
+---
+title: "MA321-7 - APPLIED STATISTICS"
+author: "Group Project"
+date: '    '
+output:
+  word_document: default
+  html_document: default
+  latex_engine: xelatex
+  pdf_document: default
+---
+
+
+## Task 1
+## Prepare and check the data and Reduce dimensionality
+
+```{r, eval=TRUE}
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+library(kableExtra)
+
+# Read the data from csv file
+InitialData <- read.csv(file="gene-expression-invasive-vs-noninvasive-cancer.csv"
+,header=T)
+
+# check the dimension of the data frame
+dim(InitialData)
+
+# Contingency table of the classes
+table(InitialData[4949])
+```
+
+The data set as a data frame has 78 rows (patients), 4949 columns with 4948 gene expression measurement of 
+cancer tissue, each column representing a 'gene'.
+Column 4949 has the information of a class variable with two values: 1 and 2, 34 patients of class 1, 
+44 ones of class 2
+
+
+```{r, eval=TRUE}
+
+set.seed(2315873)
+# Install zoo library to impute missing values
+
+library(zoo)
+
+# Select the ranked team subset data
+rank_random <- rank(runif(1:4948))[1:2000]
+team.gene.subset <- InitialData[,rank_random]
+
+#check the dimension of the random subset
+dim(team.gene.subset)
+
+# check if there are missing values
+sum(is.na(team.gene.subset))
+
+# checking the columns with missing values
+my.columns.with.NA <- apply(is.na(team.gene.subset),MARGIN=2,FUN=sum)
+my.columns.with.NA[my.columns.with.NA>0]
+
+
+# Check the distribution of the data 
+hist(as.matrix(team.gene.subset), col = 'purple',
+     xlab = 'Scale of data points', main = 'Distribution of the subset')
+
+#  re-scale the data and visualize the result
+scaled_data <- scale(as.matrix(team.gene.subset))
+
+# Plot the histogram of the scaled data
+hist(scaled_data, col = 'purple',
+     xlab = 'Scale of data points', main = 'Distribution of the subset')
+
+
+# handling the missing values
+data_imputed <- na.aggregate(team.gene.subset, FUN = mean)
+sum(is.na(data_imputed))
+
+# Rename the data subset and check again # its handled
+team.gene.subset <- data_imputed
+dim(team.gene.subset)
+sum(is.na(team.gene.subset))
+
+# check zero columns
+zero_columns <- which(colSums(team.gene.subset) == 0)
+zero_columns
+
+# check duplicate columns
+duplicate_columns <- which(duplicated(t(team.gene.subset)) | duplicated(t(team.gene.subset), fromLast = TRUE))
+duplicate_columns
+```
+
+
+
+
+Here, we used the largest registration number between our team as a random seed, generated a random subset of size 78 rows (patients) and 2000 randomly selected genes from the entire data set.
+
+We noticed that we have 77 missing values in our subset.By checking visually the distribution of the subset of data by histogram it seems to be normally distributed so we will impute the missing values by mean of every column using the 'zoo package'
+
+From the histogram we saw the scale of data between -1 to 1, but we tried to re-scale the data and check the distribution and the scale again through a histogram for the scaled data, we found the re-scaling for the data (transformation) is not required so we will work with the original scale for our data subset.
+
+We checked if there are zero or duplicate columns we found nothing duplicated or zero.
+
+
+
+
+
+
+\newpage
+
+### Unsupervised Learning Approaches to reduce dimensions
+## First Approach: Principal Components
+
+```{r, eval=TRUE}
+# Starting with unsupervised dimension reduction of the 2000 observed gene expression 
+# Showing the scatter of the genes
+# Transposed data  because the x-axis not feasible to represent our data
+plot(t(team.gene.subset), 
+     col = "#EDB120",
+     xlab = "Sample Index", 
+     ylab = "Gene Expression", 
+     main = "Scatter of Genes \n(before PCA)\n")
+
+# Using principal component dimensionality reduction technique
+data_pca <- prcomp(team.gene.subset, scale= FALSE)
+summary(data_pca)
+
+# Scree plot
+plot(data_pca, main = "Scree Plot of PCA")
+
+
+# Calculate cumulative proportion of variance explained
+cumulative_var <- cumsum(data_pca$sdev^2) / sum(data_pca$sdev^2)
+
+# Find the "elbow" point
+elbow_index <- which(diff(cumulative_var) < 0.05)[1]
+
+# Add a line representing the "elbow" point
+abline(v = elbow_index, col = "red", lty = 2)
+
+
+# for clear insight use bar plot to show all principal components 
+var_explained <- data_pca$sdev^2
+
+barplot(var_explained, 
+        names.arg = 1:length(var_explained), 
+        xlab = "Principal Components", 
+        ylab = "Variance Explained",
+        main = "Variance Explained by Principal Components",
+        col = blues9)
+
+loadings <- data_pca$rotation
+
+# Extract the scores of the observations in each principal component (1,2,3,4)
+# to check the variance of the components
+scores <- data_pca$x
+dim(scores)
+
+# scatter plot for the first five principal components
+num_observations <- nrow(data_pca$x)
+colors <- rainbow(num_observations)
+# Create scatter plot matrix with colors
+pairs(data_pca$x[, 1:4], col = colors)
+
+# check the correlation matrix between 4 PC's.:
+cor.values <- cor(data_pca$x[,1:4])
+cor.values
+
+```
+
+
+### Plot the 4 principle components in 2D and see the relationship between them
+
+```{r, eval=TRUE}
+
+library(plotly)
+
+# Extract the first four principal components
+pcs <- data_pca$x[, 1:4]
+
+# Create a scatter plot matrix
+fig <- plot_ly(type = 'scattergl', mode = 'markers')
+
+# Add traces for each pair of principal components
+for (i in 1:3) {
+  for (j in (i+1):4) {
+    fig <- fig %>% add_trace(x = pcs[, i], y = pcs[, j], type = 'scatter', mode = 'markers',
+                             marker = list(size = 5), name = paste0("PC", i, "-PC", j))
+  }
+}
+
+# Set layout options
+fig <- fig %>% layout(title = "Scatter Plot of Principal Components",
+                      xaxis = list(title = "Principal Component"),
+                      yaxis = list(title = "Principal Component"))
+
+# Display the plot
+fig
+```
+
+
+
+### Plot the principle components in 3D and see the relationship between them
+
+```{r, eval=TRUE}
+library(plotly)
+
+# Extract the first four principal components
+components <- data_pca$x[, 1:4]
+
+# Create a data frame for visualization
+components_df <- as.data.frame(components)
+
+# Set the title
+tit <- 'Total Explained Variance = [Insert Your Explained Variance Here]'
+
+# Create the plot
+fig <- plot_ly(components_df, x = ~PC1, y = ~PC2, z = ~PC3, color = ~PC4, 
+               colors = c('#636EFA', '#EF553B', '#00CC96')) %>%
+  add_markers(size = 12)
+
+# Set layout options
+fig <- fig %>%
+  layout(
+    title = tit,
+    scene = list(bgcolor = "#e5ecf6")
+  )
+
+# Display the plot
+fig
+
+```
+
+source of code
+https://plotly.com/r/pca-visualization/
+
+the data points are scattered randomly across the plot without forming clusters, lines, or any other structured pattern, it suggests that there is no linear relationship between the principal components. This indicates that the principal components are uncorrelated.
+
+
+
+
+## Second Approach: One-Sample Variance
+```{r, eval=TRUE}
+
+# Calculate variance for each gene across samples (one-sample variance)
+gene_variances <- apply(team.gene.subset, 1, var) # variance across rows (each sample)
+
+num_top_genes <- 50
+
+# Get the indices of the top genes with highest variance
+top_genes_indices <- order(gene_variances, decreasing = TRUE)[1:num_top_genes]
+
+# Get the variances of the top genes
+top_genes_variances <- gene_variances[top_genes_indices]
+
+# Create a data frame to display the top genes with their variances and indices
+top_genes_info <- data.frame(Gene_Index = top_genes_indices, Variance = top_genes_variances)
+
+# Show the top genes with highest variances and indices
+
+top_genes_names <- colnames(team.gene.subset)[top_genes_indices]
+
+# Create a data frame to display the top genes with their variances, names, and indices
+top_genes_info <- data.frame(Gene_Index = top_genes_indices, Gene_Name = top_genes_names, Variance = top_genes_variances)
+
+# Display the top genes along with their variances, indices, and names
+print(top_genes_info)
+
+```
+We did the reduction of dimensions using two methods, the first one through principal components, the other one by checking the maximum variance for the first 50 genes We noticed that about 10 genes have variances from 0.568 to 0.1 for the 10th gene then the variance drops to small values. Despite the fact that we have from the second method of dimension reduction around 10 genes may capture the high variability we cannot ignore the effects of the other (1990 genes) and their relevant to the study and results, it does not make sense. So, according to our analysis, the PCA method is more comprehensive approach to represent the entire data in countable components we can deal with them easily in our next steps of this assignment.
+
+
+
+
+### Supervised Learning Approach to reduce dimensions
+
+Now we use the data subset to reduce dimensionality for supervised learning techniques
+
+```{r, eval=TRUE}
+# supervised dimension reduction of the 2000 observed gene expression 
+# take the subset of data that includes the last column of classes 
+# (invasive/noninvasive)
+
+library(zoo)
+set.seed(2315873)
+rank_random2 <- rank(runif(4948))[1:2000] 
+class.gene.subset <- InitialData[, c(rank_random2, 4949)]
+
+# check the dimension of the subset
+dim(class.gene.subset)
+
+# check if there are missing values
+sum(is.na(class.gene.subset))
+
+# handling the missing values
+data_imputed2 <- na.aggregate(class.gene.subset, FUN = mean)
+sum(is.na(data_imputed2))
+
+# Rename the data subset and check again # its handled
+class.gene.subset <- data_imputed2
+dim(class.gene.subset)
+sum(is.na(class.gene.subset))
+```
+
+
+
+
+
+#Defining the labels (class for the data) and applying some tests to decide types of modelling techniques we have to apply in supervised learning.
+```{r, eval=TRUE}
+
+library(ggplot2)
+# Assign each label to a specified class (label1,2)
+class.gene.subset$cancer_type <- ifelse(class.gene.subset$Class == 1,
+"Invasive", "Noninvasive")
+class.gene.subset$cancer_type <- factor(class.gene.subset$cancer_type, 
+label=c("Invasive","Noninvasive"))
+
+# check the counts by contingency table
+table(class.gene.subset$cancer_type)
+
+# Apply two-sample T-test to compare the two groups(invasive/noninvasive)
+# with the most relevant features (genes) here we chose the scores of the 
+# principal components
+t_test1 <- t.test(scores ~ cancer_type, data = class.gene.subset, var.equal = FALSE)
+t_test1
+
+# Another approach to compare the two group with the highest variance gene
+# we extracted in the previous step (NM_012138)
+t_test2 <- t.test(NM_012138 ~ cancer_type, data = class.gene.subset, var.equal = FALSE)
+t_test2
+
+ggplot(class.gene.subset, aes(x = cancer_type, y = P.C.1, fill = cancer_type)) +
+  geom_boxplot(outlier.colour = "black", outlier.shape = 16, outlier.size = 2, notch = FALSE) +
+  labs(x = "Cancer Type", y = "P.C.1 Scores") +  
+  ggtitle("Box Plot of P.C.1 Scores by Cancer Type") +
+  scale_fill_manual(values = c("#E69F00", "#56B4E9")) 
+```
+
+
+
+
+
+Our assumptions before applying the two sample t-test as following:
+
+Null hypothesis: HO: The means of P.C.1 scores and the class variable (invasive and noninvasive cancers) are equal / no association between the class variable (cancer type) and the P.C.1 scores (independent).
+
+Alternative hypothesis: H1: The means of P.C.1 scores and the class variable (invasive and noninvasive cancers) are not equal / significant association between the class variable (cancer type) and the P.C.1 scores (dependent).
+
+
+The t-test shows that the cancer type groups are not statistically significant with the data because the p-value = 0.0.08 when testing and comparing with the 1st principal component which is greater than 0.05 (the typical significance level), therefore we haven't enough evidence to reject the null hypothesis although we saw difference between the mean values between the two groups (invasive/noninvasive). so, from this contrast to be in the safe side we have to assume that both groups are associated and affected with the first principal component ant the highest variance gene and we cannot deny the relevant relationship between cancer type and the main genes. This means we need further approaches to see the association and the effects between the genes (variables) and each type of cancer.
+
+
+
+The boxplot shows the difference in the means of the two groups of cancer types, but it is obvious from the quantiles, limits, and outliers, that there is differences in the variability or spread of the data between the groups, which proves our assumption to do further analysis.  
+
+t-test code reference:  http://www.sthda.com/english/wiki/unpaired-two-samples-t-test-in-r
+ggploot colors reference: http://www.sthda.com/english/wiki/ggplot2-colors-how-to-change-colors-automatically-and-manually
+
+
+
+### Unsupervised learning models/clustering
+### Task 2: 
+Task 2 in our assignment requires to try fit models for our data using unsupervised/clustering learning techniques; we will use K-means and hierarchical clustering for both genes and patients.
+
+```{r, eval=TRUE}
+# K-mean clustering using the entire score of the principal components
+# Gene Clustering
+
+par(mfrow = c(2, 2), mar = c(3, 3, 1, 1))
+
+for (k in 3:6) {
+  k.mean <- kmeans(scores, centers = k, nstart = 20)
+ 
+  
+  # Calculate the within-cluster sum of squares (WCSS) - objective value
+  wcss <- k.mean$tot.withinss
+  
+  # Plot the original data
+  plot(scores, xlim=c(-10, 15), ylim=c(-10, 8), col=1, cex=1.5, 
+       xlab=" ", ylab=" ")
+  
+  # Add points for each cluster
+  for (i in 1:k) {
+    points(scores[k.mean$cluster == i, ], col=i+1, pch=i+15, cex=1.5)
+  }
+  
+  # Add legend
+  legend("topright", legend=1:k, col=2:(k+1), pch=(2:(k+1))+15, title="Clusters")
+  
+  # Add the objective value on graph
+  text(x = 10, y = -8, labels = paste("WCSS:", round(wcss, 2)), pos = 1)
+  
+  # Add title for each plot
+  title(paste("k =", k))
+}
+
+```
+
+The first method for unsupervised learning we want to apply on our data is the K-means clustering method.
+Here we followed the k-means algorithm as:
+1. Randomly assign a number, from 1 to K, to each of the observations. These serve as         initial cluster assignments for the observations.
+2. Iterate until the cluster assignments stop changing:
+   (a) For each of the K clusters, compute the cluster centroid. The kth cluster centroid         is the vector of the p feature means for the observations in the kth cluster.
+   (b) Assign each observation to the cluster whose centroid is closest
+       (where closest is defined using Euclidean distance).
+
+We chose the initial set of centroids to be 20, with different values of K to see the result after each iteration with each K (number of clustering). Our goal in K-means is to minimize the similarities (maximize the distance) between clusters and maximize the similarities (minimize the distance) within the same cluster. Similarities are measured by the squared Euclidean distance of the objective function using the following formula:
+
+$$
+\Sigma_{j=1}^{p} {(x_{i,j}-{x_{k,j}}^-)}^2
+$$
+
+The k-means aims to decrease the objective function at each step, until the assignments stop changing. We checked this objective function simultaneously with changes in k values, then extracted the values of K-clustering components. We noticed the WCSS (within cluster sum squares), which measures the distance between points within each cluster, decreased from (8547.64 in K = 3) to (7458.98 in K = 6). So as we increase the K value, we can obtain more distinguished classes and reduce the distance.
+
+
+
+```{r, eval=TRUE}
+# K-mean clustering  using the first four principal components 
+#and compare the differences
+# Gene Clustering
+par(mfrow = c(2, 2), mar = c(3, 3, 1, 1))
+
+# The first four principal components from the data_pca.
+kmeans_input <- scores[, 1:4]
+for (k in 3:6) {
+  # k-means clustering
+  k.mean_pca <- kmeans(kmeans_input, centers = k, nstart = 20)
+  
+  # Calculate the within-cluster sum of squares (WCSS) - objective value
+  wcss <- k.mean_pca$tot.withinss
+  
+  # Plot the original data
+  plot(kmeans_input, xlim=c(-10, 15), ylim=c(-10, 15), col=1, cex=1.5, 
+       xlab=" ", ylab=" ")
+  
+  # Add points for each cluster
+  for (i in 1:k) {
+    points(kmeans_input[k.mean_pca$cluster == i, ], col=i+1, pch=i+15, cex=1.5)
+  }
+  
+  # Add legend
+  legend("topright", legend=1:k, col=2:(k+1), pch=(2:(k+1))+15, title="Clusters")
+  
+  # Add the objective value on graph
+  text(x = 10, y = -8, labels = paste("WCSS:", round(wcss, 2)), pos = 1)
+  
+  # Add title for each plot
+  title(paste("k =", k))
+}
+
+```
+
+
+
+
+
+
+
+
+
+
+From the K-means clustering using the first four principal components, we extracted the clusters components as sum square distances between points and between clusters as well, number of clusters, number of centers and size of each cluster. From the plots we saw the minimum distance between points in the same cluster(WCSS) with K=6 is 784.97.
+
+From these results we can judge the best K-value to divide the data into separate clusters, it is apparently, that we require high value of K with many iterations to achieve our goal in clustering genes and separate the clusters completely with minimum WCSS.
+
+```{r, eval=TRUE}
+# K-mean clustering  components after using four principal components
+component_names <- names(k.mean)
+component_names
+wcss <- k.mean$tot.withinss ; print('wcss is:') ; wcss
+clus <- k.mean$cluster ; print('Number of clusters:'); clus # number of clusters
+# center <- k.mean$centers ; print('Centers of clusters');  center # number of centers
+totss <- k.mean$totss ; print('Total Sum of Squares'); totss  # Total Sum of Squares
+withinss <- k.mean$withinss ; print('within-cluster sum of squares'); withinss  # within-cluster sum of squares
+betweenss <- k.mean$betweenss ; print('Between-cluster sum of squares');betweenss  # between-cluster sum of squares 
+size <- k.mean$size ; print('number of data points within each cluster'); size  #  number of data points within each cluster. 
+iter <- k.mean$iter ; print('Number of iteration'); iter  #   number of iterations performed by the 
+# algorithm until convergence 
+# nstart is number of initial sets of cluster centroids
+```
+
+
+Regarding to patients, we applied also k-means technique for the 78 patients using the same approach we used for clustering for genes.
+
+```{r, eval=TRUE}
+# # K-mean clustering  for patients
+# Patients Clustering
+
+patient_input <- t(team.gene.subset)
+dim(patient_input)
+k <- 4
+# Apply k-means clustering
+k.mean_patient <- kmeans(patient_input, centers = k, nstart = 50)
+
+# Calculate the within-cluster sum of squares (WCSS) - objective value
+wcss <- k.mean_patient$tot.withinss
+
+# Plot the original data
+plot(patient_input, xlim=c(-10, 15), ylim=c(-10, 8), col=1, cex=1.5, 
+     xlab=" ", ylab=" ")
+
+# Add points for each cluster
+for (i in 1:k) {
+  points(patient_input[k.mean_patient$cluster == i, ], col=i+1, pch=i+15, cex=1.5)
+}
+
+# Add legend
+legend("topright", legend=1:k, col=2:(k+1), pch=(2:(k+1))+15, title="Clusters")
+
+# Add the objective value on graph
+text(x = -5, y = -6, labels = paste("WCSS:", round(wcss, 2)), pos = 1)
+
+# Add title for the plot
+title(paste("k =", k))
+
+```
+
+To apply K-mean cluster for the patients, We transposed the data to get our patients as columns, checked the dimension of the data then applied the k-means clustering method for all patients which is visually not clear. That means all patient bodies have the same components of genes which makes sense about similarities and the clusters closed together. It is not reasonable to do principle components for patients because dealing with many individual human bodies cannot be concluded into one or two or more new principle components. As a justification for that, we applied the PCA for patients in the next step and we got 78 principle component which is the same number of the patients! this proves the clustering method for patients is not feasible.
+
+After getting 78 principle components, it is not required to apply again the k-mean clustering method for patients. Bodies are all similar in genes so all the patients will be clustered together with minimum distance WCSS equals 10041.64 at K = 4, which considered high number as a distance.
+
+
+
+
+```{r, eval=TRUE}
+# Principal components for Patients
+patient_input_pca <- prcomp(patient_input, scale= FALSE)
+summary(patient_input_pca)
+# Here after getting 78 principle component, it is not required to to k-mean clustering method for patients.
+
+```
+Now, Our K-means method is the one we used the first four principal components. We want to evaluate the model by calculate the Silhouette Scores to define the optimal number of clusters required in our model then assess the stability or uncertainty of the model and compute the confidence interval by using **bootstrap re-sampling** method to measure the performance of the model. 
+
+After these evaluation methods we want to compare the k-means with the next clustering model we will use **hierarchical clustering**. and choose the best machine learning clustering model for our data as required in task 4.
+
+
+
+
+## Hierarchical Clustering
+The second method for unsupervised learning to apply is the Agglomerative hierarchical clustering. We can describe this method as a family of methods or a group of related techniques that share similar approaches
+Here we followed the Agglomerative hierarchical clustering algorithm:
+1. Begin with the set of n observations O and a distance (or dissimilarity) measure for      all n x (n - 1)/2 pairs of objects.
+2. For i = n, n - 1, ... , 2:
+   (a) Examine all pairwise inter-cluster dissimilarities between the i clusters and             identify the pair of clusters which are least dissimilar . The dissimilarity              between the two joint clusters gives the height of the dendrogram at which the two        clusters are joint.
+   (b) Update the distance between the new joint cluster and all other clusters with a           given update or so called linkage function (e.g., complete-, single-, average- or         centroid-linkage).
+
+We now perform hierarchical clustering of the observations using complete, single, and average linkage. Unlike the K-means clustering technique, here we have know how many clusters we want just we obtain a result of a dendogram represents all the observations.from this dendogram we know the number of clusters from 1 to n as mentioned in the algorithm above. As K-means, Similarities measured by Euclidean distance.
+
+
+
+
+```{r, eval=TRUE}
+# hierarchical clustering
+
+library(factoextra)
+library(purrr)
+library(ggpubr)
+# We now perform hierarchical clustering of all observations using complete, single, and average linkage. Euclidean distance is used as the dissimilarity measure.
+
+d <- dist(scores, method = "euclidean")
+linkage_methods <- c("complete", "average", "single")
+for (i in 1:length(linkage_methods)) {
+# Hierarchical clustering using Complete Linkage
+hc <- hclust(d, method = linkage_methods[i])
+# Plot the obtained dendrogram
+plot(hc, cex = 0.6, hang = -1,labels=class.gene.subset$cancer_type , main=paste("Linkage:", linkage_methods[i]))
+#We can cut the dendrogram at the height that will yield a particular number of clusters, say 2:
+# Plot the obtained dendrogram with rectangle borders for 2 clusters
+rect.hclust(hc, k=2, border = 2:4)
+# Cut tree into 2 groups
+sub_grps <- cutree(hc, k = 2)
+table(sub_grps, class.gene.subset$cancer_type) 
+}
+
+# agglomeration methods to assess
+m <- c("average", "single", "complete")
+names(m) <- c("average", "single", "complete")
+ 
+# function to compute hierarchical clustering coefficients
+ac <- function(x) {
+  agnes(team.gene.subset, method = x)$ac
+}
+map_dbl(m, ac)
+
+#complete linkage gives the highest value among the 3 with a value of 0.6644587.
+
+#Typically, single linkage will tend to yield trailing clusters: very large clusters onto which individual observations attach one-by-one. On the other hand, complete and average linkage tend to yield more balanced, attractive clusters. For this reason, complete and average linkage are generally preferred to single linkage. Clearly cell lines within a single cancer type do tend to cluster together, although the clustering is not perfect. We will use complete linkage hierarchical clustering for the analysis that follows.
+
+# now we perform hierarchical clustering for first 4 principal components using complete linkage hierarchical clustering for k ranging from 2 to 5
+
+
+# Dissimilarity matrix
+d <- dist(scores[, 1:4], method = "euclidean")
+# Set up the layout for the plots
+
+for (k in 2:5) {
+  # Hierarchical clustering using Complete Linkage
+  hc1 <- hclust(d, method = "complete")
+  # Plot the obtained dendrogram
+  plot(hc1, cex = 0.6, hang = -1, labels = class.gene.subset$cancer_type, 
+       main = paste("Complete Linkage", ", K =", k))
+  # Plot the obtained dendrogram with rectangle borders for k clusters
+  rect.hclust(hc1, k, border = 2:4)
+}
+  
+```
+
+
+We applied the hierarchical clustering on the entire set of data used for the unsupervised learning (team.gene.subset) before extracting the principal components and we clustered each type of cancer in some leafs of the tree according to similarities in between. The results shows number of observations from each type of cancer in each cluster. 
+
+Then we applied the same technique on the first four informative principal components.the results of clustering numbers are almost same from the ones that we obtained when we performed hierarchical clustering on the full data set. so we will do our further assessment for the clustering on the one we used the four principal components. We tried to choose the best shrinkage (complete, average, single) we found the best is the complete one in which the numeric coefficients for the model is 0.6644 which means in this type of hierarchical (complete) the data points are grouped well into clusters. So now our best model to be complete shrinkage.   
+
+To find the optimal number of clusters in the hierarchical method we checked the result of silhouette scores which typically between [-1,1] the closer value to 1 is the optimal value, which measures how similar data points to its own cluster. As the table of the scores we noticed that the best number of clusters is 2 as we got 0.472 silhouette score in complete shrinkage using only the first four principal components, means the data points can be separated properly if splitted into two clusters. So we will choose the dendogram with two clusters/complete shrinkage to compare with k-means method and choose the best model.
+
+https://www.geeksforgeeks.org/how-to-perform-hierarchical-cluster-analysis-using-r-programming/
+
+
+```{r, eval=TRUE}
+#performance metrics for hierarchical clustering
+library(cluster)
+#considering first four principal components
+s <- NULL
+print('Silhouette Score when using principal components as our data')
+for (i in 2:10) {
+  k <- cutree(hclust(dist(scores[, 1:4]), method = "ward.D"), i)
+  silhouette_summary <- summary(silhouette(k, dist(scores[, 1:4])))
+  s[i] <- silhouette_summary$si.summary[3]
+  print(paste("Silhouette Score for", i, "clusters:", s[i]))
+}
+```
+
+
+
+
+## Task 4: Investigation and Evaluation of clustering methods and choosing the best model for our data
+
+We have started modelling/fitting the data using the K-means method, by attempting more than one value of K and see the results of the distances within and between clusters and the distribution of the clusters visually. to check the best clusters for our model we apply bootstrapping and re-sampling our principle component data many times to get get numeric results help us to choose the best number of clusters.
+
+```{r, eval=TRUE}
+
+library(gclus)
+library(dplyr)
+library(fpc)
+
+# Re-sampling (bootstrapping) our data (scores of 4 PCA's) 6 times and see the results of K-means
+# to measure the stability measures: 
+km.boot2 <- clusterboot(scores[, 1:4], B=100, bootmethod="boot",
+                        clustermethod=kmeansCBI,krange=2)
+print(km.boot2)
+km.boot3 <- clusterboot(scores[, 1:4], B=100, bootmethod="boot",
+                        clustermethod=kmeansCBI,krange=3)
+print(km.boot3)                        
+km.boot4 <- clusterboot(scores[, 1:4], B=100, bootmethod="boot",
+                        clustermethod=kmeansCBI,krange=4)
+print(km.boot4)                        
+km.boot5 <- clusterboot(scores[, 1:4], B=100, bootmethod="boot",
+                        clustermethod=kmeansCBI,krange=5)
+print(km.boot5)
+km.boot6 <- clusterboot(scores[, 1:4], B=100, bootmethod="boot",
+                        clustermethod=kmeansCBI,krange=6)
+print(km.boot6)
+```
+
+After doing bootstrapping re-sampling method on K-means principle components data we got results about stability of K-means method when running it several times from 2 to 6 k range). We checked the measures (information) have been gotten from the re-sampling about number of recovered clusters and Cluster-wise Jaccard bootstrap mean they should be maximized and number dissolved clusters to be minimized and noticed that if number of clusters 2 or 3 the model will be more stable compare to the higher cluster models.
+
+
+
+
+The last step we shall do is to compare both clustering techniques we applied above on our data and choose the best one, after re-sampling and reading the measures, all this by checking the stability for each model at a certain number of clusters by using the method of clustering validation.
+
+```{r}
+# checking Validation of clusters between k-means and hierarchical methods
+# transform data.frame into matrix
+pca_matrix <- as.matrix(scores[, 1:10])
+
+valid_test <- clValid(pca_matrix, c(2:6),
+                      clMethods = c( "hierarchical","kmeans"),
+                      validation = c("internal", "stability")
+)
+
+summary(valid_test)
+
+```
+The results from the validation approach appeared in one table and concludes all results easily. It summarizes a comparison between hierarchical clustering and k-means clustering in some numeric measures as following:
+1. Average Proportion of Non-overlapping data (APN): It should be high value to ensure better separation between clusters.
+2. Average Distance (AD): It measures the average distance between clusters centroids, same as ADM but this represents the average distance between more deep centroids.
+3. Figure of Merit (FOM): to assess the quality of clusters in terms of separation and average distance of centroids.
+4. Connectivity: measures how the data points within the same cluster are well connected. It should be higher for more and better connectivity.
+5. Dunn: represents ration of distance and connection the clusters. It should be high to be assessed well.
+6. Silhouette Score: measures the similarity of each data point to its cluster. So, the higher is the best.
+
+To assess the stability of the models we are looking at APN, FOM, Connectivity and Silhouette Score and it is apparent that the hierarchical model with complete shrinkage is better than k-means model in clustering our genes hat  the clustering will be more stable after just 2 clusters while K-means needs at least 6 clusters to start being stable and as we saw while improving our k-mean results the model relies completely on the value of K to be defined before starting the technique and training the data as much as we can to get best model. 
+
+Result on unsupervised learning:
+After all approaches we did above, the best model we recommend in the unsupervised learning techniques is the hierarchical model for several reasons built on the basis of our analysis:
+1. Stability of the hierarchical model started after 2 clusters which is easier and faster in getting the results to cluster the data points.
+2. Hierarchical dendogram more clear visually implemented than clusters that maybe a lot of similarities between genes in the human body which lead to overlapping in clusters and can be separated after high value of (K) which is computationally expensive and slow to implement.
+
+Our recommendation:
+As our data is a collection of numeric data and a label / class of the cancer type available to describe the disease, with this large data set, it is better to apply the supervised / classification techniques rather than the clustering methods. This we will do in the next task of the assignment.
+
+https://kkulma.github.io/2017-05-10-cluster-validation-in-unsupervised-machine-learning/
+
+
+
+
+
+
+
+## supervised learning models/classification
+
+Now, starting with the supervised learning methods in which we use the class column (outcome variable). Our aim is to classify the data points (variable) into two classes about cancer types invasive and noninvasive cancers according to 2000 genes data in the human body then predict any unseen data or any new observation to which class it may belong by using a model we will get from our data and analysis.  
+The first technique for supervised learning we applying is **logistic regression**, it is a convenient technique whenever we have binary outcome as our case. 
+
+We splitted the data into two groups; trained and tested data and considered the regularization method by using **Ridge** and **LASSO** techniques to avoid overfitting and to generalize the obtained model as much as we can for the new unseen data observations.
+
+
+
+```{r, eval=TRUE}
+# Logistic Regression
+# Hyperparameters to consider: regularization strength (e.g., L1 or L2 regularization),
+# penalty type
+
+# Load necessary libraries
+if (!requireNamespace("glmnet", quietly = TRUE)) {
+  install.packages("glmnet")
+}
+if (!requireNamespace("caret", quietly = TRUE)) {
+  install.packages("caret")
+}
+
+library(caret)
+library(glmnet)
+
+# Split your data into training and testing sets
+set.seed(2315873)
+index <- createDataPartition(class.gene.subset$cancer_type, p = 0.8, list = FALSE)
+train_data <- class.gene.subset[index, ]
+test_data <- class.gene.subset[-index, ]
+
+# Convert the response variable to a factor with two levels
+train_data$cancer_type <- as.factor(train_data$cancer_type)
+
+# Check for missing values in predictor variables
+if (any(is.na(train_data[, -1]))) {
+  stop("There are missing values in the predictor variables.")
+}
+
+# Train the logistic regression model with regularization (L1 penalty)
+logistic_model <- cv.glmnet(
+  as.matrix(train_data[, -1, drop = FALSE]),  # Exclude the response variable
+  train_data$cancer_type,
+  alpha = 1,  # 1 for L1 penalty (lasso), 0 for L2 penalty (ridge)
+  family = "binomial",
+  type.measure = "class"  # Classification error for model selection
+)
+
+# Check for missing values in the test set
+if (any(is.na(test_data[, -1]))) {
+  stop("There are missing values in the predictor variables of the test set.")
+}
+
+# Make predictions on the test set
+predictions_prob <- predict(logistic_model, newx = as.matrix(test_data[, -1, drop = FALSE]), s = "lambda.min", type = "response")
+predictions_labels <- predict(logistic_model, newx = as.matrix(test_data[, -1, drop = FALSE]), s = "lambda.min", type = "class")
+
+# Display predicted probabilities and labels
+print("Predicted Probabilities:")
+print(predictions_prob)
+
+print("Predicted Labels:")
+print(predictions_labels)
+# Evaluate the model performance
+confusion_matrix <- table(predictions_labels, test_data$cancer_type)
+print(confusion_matrix)
+
+```
+
+the logistic regression model with L1 regularization (lasso) performed well on the test set. It correctly classified instances into "Noninvasive" and "Invasive" classes, with no observed misclassifications in the given test set.sensitivity and specificity is also 100 percent. Accuracy is also 100.Positive Predictive Value (Precision): 100%. Negative Predictive Value: 100%.
+
+We can see clearly from the graph that specificity and sensitivity is 1 that's why we are observing straight
+line in the graph of logistic regression.
+
+```{r, eval=TRUE}
+# Plotting the logistic regression model
+# Calculate ROC curve and AUC
+library(pROC)
+roc_data <- roc(test_data$cancer_type, predictions_prob)
+auc_value <- auc(roc_data)
+
+# Plot ROC curve
+plot(roc_data, main = "ROC Curve for Logistic Regression Model")
+legend("bottomright", legend = paste("AUC =", round(auc_value, 2)), cex = 0.8)
+```
+
+
+
+
+### LDA
+
+```{r, eval=TRUE}
+# LDA 
+# Hyperparameters to consider: None in the basic form, but regularization 
+# parameters can be added for improved robustness.
+
+# Install and load necessary library (if not already installed)
+if (!requireNamespace("MASS", quietly = TRUE)) {
+  install.packages("MASS")
+}
+
+library(MASS)
+library(caret)
+
+# Assuming class.gene.subset is the data frame with the response variable "cancer_type"
+# and predictor variables
+
+# Split your data into training and testing sets
+set.seed(2315873)
+index <- createDataPartition(class.gene.subset$cancer_type, p = 0.8, list = FALSE)
+train_data <- class.gene.subset[index, ]
+test_data <- class.gene.subset[-index, ]
+
+# Fit LDA model on training data
+lda.model <- lda(cancer_type ~ . - Class, data = train_data)
+
+# Display the summary of the LDA model
+print(lda.model)
+
+# Predict the class label of each observation in the test set
+predicted.lda <- predict(lda.model, newdata = test_data)$class
+
+# Confusion matrix for the results
+confusion_matrix <- table(predicted.lda, test_data$cancer_type)
+print(confusion_matrix)
+
+# Total number of observations in the test data
+total <- sum(confusion_matrix)
+cat('Total observations in the test data: ', total, '\n')
+
+# Calculate sensitivity
+Sens <- confusion_matrix[1, 1] / sum(confusion_matrix[1, ])
+cat('Sensitivity: ', Sens, '\n')
+
+# Calculate specificity
+Spec <- confusion_matrix[2, 2] / sum(confusion_matrix[2, ])
+cat('Specificity: ', Spec, '\n')
+
+# Number of misclassified observations
+error_observed <- confusion_matrix[2, 1] + confusion_matrix[1, 2]
+cat('Misclassified observations: ', error_observed, '\n')
+
+# Probability of misclassification
+missclass_prob = error_observed / total 
+cat('Probability of misclassification: ', missclass_prob, '\n') 
+
+```
+
+I used the LDA method to find a model with linear combinations of predictor variables that maximize the separation of the two classes (Invasive/Noninvasive). The LDA model with Coefficients shown in the table of LDA each associated with its predictor.
+
+The confusion matrix shows the actual and predicted values of the two types of cancer. We can see the total number of observations =14 (as my test data set).
+
+The actual values of invasive cancer which are truly predicted as invasive = 4 observation.
+
+The actual values of noninvasive cancer which are truly predicted as noninvasive = 6 observation.
+
+The actual values of invasive cancer which are predicted as noninvasive = 2 observation.
+
+The actual values of noninvasive cancer which are predicted as invasive = 2 observation.
+
+Most of the observations are classified correctly as the missclassification rate just 0.28 which is almost low rate. From this results I got the sensitivity and the specificity of the prediction / classifier model.
+
+sensitivity = 0.6666, means the model correctly identifies 66.66% of the actual Invasive cancer.
+
+Specificity = 0.75, means the model correctly identifies 75% of the actual Noninvasive cancer.
+
+Both are moderate rates leads to well performance of the model in detecting the invasive/noninvasive cancer properly.
+
+
+
+The graph shows two groups: "Invasive" and "Noninvasive." These are categories that an LDA model is trying to distinguish between.
+Axis:
+
+The horizontal axis probably represents the values of the first linear discriminant, which is a linear combination of features that separates the two groups.
+Data Distribution:
+
+The boxes represent the interquartile range (IQR) of the discriminant scores for each group, indicating where the middle 50% of the data lies.
+The vertical lines (or "whiskers") extending from the boxes indicate variability outside the upper and lower quartiles, and points outside these lines could be considered outliers.
+Separation:
+
+An LDA plot is often used to visualize the separation between classes. In this plot, both "Invasive" and "Noninvasive" categories have a median around 0, which suggests that the first linear discriminant might not be effectively separating the two groups, assuming 0 is the threshold.
+Spread and Overlap:
+
+The spread of data, as seen from the width of the box plots, suggests variability within each group. There appears to be a significant overlap between the two categories, which may imply that the classes are not well separated on the first linear discriminant alone.
+
+
+
+
+
+##### QDA
+```{r, eval=TRUE}
+# QDA 
+# Hyperparameters to consider: None in the basic form, but regularization 
+#parameters can be added for improved robustness.
+# Assuming you have a data frame named data_qda_class with response variable "cancer_type_qda" and predictor variables
+# Install and load necessary library (if not already installed)
+if (!requireNamespace("MASS", quietly = TRUE)) {
+  install.packages("MASS")
+}
+
+library(MASS)
+library(caret)
+
+# Assuming you have scores, class.gene.subset, and other necessary data loaded
+# Create QDA data
+data_qda <- scores[, 1:10]
+data_qda_class <- cbind(data_qda, class.gene.subset[2001])
+data_qda_class <- as.data.frame(data_qda_class)
+
+data_qda_class$cancer_type_qda <- ifelse(data_qda_class$Class == 1,
+                                          "Invasive", "Noninvasive")
+data_qda_class$cancer_type_qda <- factor(data_qda_class$cancer_type_qda, 
+                                         labels = c("Invasive", "Noninvasive"))
+
+# Split the data into training and testing sets
+set.seed(2315873)  # Set seed for reproducibility
+index <- createDataPartition(data_qda_class$cancer_type_qda, p = 0.8, list = FALSE)
+
+# Create training data
+train_data_qda <- data_qda_class[index, ]
+
+# Create testing data
+test_data_qda <- data_qda_class[-index, ]
+
+# Fit QDA model
+qda.model <- qda(cancer_type_qda ~ . - Class, data = train_data_qda)
+
+# Predict the class label of each observation based on training data 
+predicted_qda <- predict(qda.model, newdata = test_data_qda)$class
+
+# Confusion matrix for the results
+conf_matrix_qda <- table(predicted_qda, test_data_qda$cancer_type_qda)
+print(conf_matrix_qda)
+
+# Total number of observations in the testing data
+total_qda <- sum(conf_matrix_qda)
+
+# Calculate sensitivity
+sensitivity_qda <- conf_matrix_qda[1, 1] / sum(conf_matrix_qda[1, ])
+cat('Sensitivity: ', sensitivity_qda, '\n')
+
+# Calculate specificity
+specificity_qda <- conf_matrix_qda[2, 2] / sum(conf_matrix_qda[2, ])
+cat('Specificity: ', specificity_qda, '\n')
+
+# Number of misclassified observations
+error_observed_qda <- conf_matrix_qda[2, 1] + conf_matrix_qda[1, 2]
+cat('Misclassified observations: ', error_observed_qda, '\n')
+
+# Probability of misclassification
+missclass_prob_qda <- error_observed_qda / total_qda 
+cat('Probability of misclassification: ', missclass_prob_qda, '\n')  
+
+```
+Here, I used the QDA method to find a model of predictor variables that classify the observations into the two classes (Invasive/Noninvasive) observations. The QDA model with Coefficients shown in the table of QDA each associated with its predictor.
+
+The confusion matrix shows the actual and predicted values of the two types of cancer. We can see the total number of observations = 14 as of test data.
+
+The actual values of invasive cancer which are truly predicted as invasive = 1 observation.
+
+The actual values of noninvasive cancer which are truly predicted as noninvasive = 7 observation.
+
+The actual values of invasive cancer which are predicted as noninvasive = 1 observation.
+
+The actual values of noninvasive cancer which are predicted as invasive = 5 observation.
+
+Most of the observations are classified correctly as the missclassification rate just 0.42 which is almost low rate. From this results I got the sensitivity and the specificity of the prediction / classifier model.
+
+sensitivity = 0.5, means the model correctly identifies 50% of the actual Invasive cancer.
+
+Specificity = 0.5833, means the model correctly identifies 58.33% of the actual Noninvasive cancer.
+
+
+
+## KNN
+
+```{r, eval=TRUE}
+# k-NN
+# Hyperparameters to consider: Number of neighbors (k), distance metric, 
+# and weighting scheme.
+# Install and load necessary libraries (if not already installed)
+if (!requireNamespace("caret", quietly = TRUE)) {
+  install.packages("caret")
+}
+
+# Load libraries
+library(caret)
+
+# Assuming class.gene.subset is your data frame with the response variable "cancer_type"
+# and predictor variables
+
+# Split your data into training and testing sets
+set.seed(2315873)
+index <- createDataPartition(class.gene.subset$cancer_type, p = 0.8, list = FALSE)
+train_data <- class.gene.subset[index, ]
+test_data <- class.gene.subset[-index, ]
+
+# Specify the control parameters for the cross-validation
+ctrl <- trainControl(method = "cv", number = 5)
+
+# Fit k-NN model with hyperparameter tuning
+knn_model <- train(
+  cancer_type ~ . - Class,
+  data = train_data,
+  method = "knn",
+  trControl = ctrl,
+  tuneLength = 10  # Adjust this value based on the desired number of k values to try
+)
+
+# Print the best hyperparameters
+print(knn_model)
+
+# Make predictions on the test set
+predictions <- predict(knn_model, newdata = test_data)
+
+# Evaluate the model performance
+confusion_matrix <- confusionMatrix(predictions, test_data$cancer_type)
+print(confusion_matrix)
+```
+
+Optimal Parameter (k): The model was fine-tuned with different values of 'k' (number of neighbors) to find the best one. The chosen 'k' for optimal performance is 13.
+Performance Summary:
+Accuracy (Overall Correct Predictions): The model got about 64.29% of predictions correct.
+Detailed Analysis:
+Sensitivity (Spotting Actual Positives):
+
+What it means: The model identified only 33.33% of the actual positive cases.
+In simpler terms: It missed some cases when the disease was actually present.
+Specificity (Spotting Actual Negatives):
+
+What it means: The model correctly identified 87.50% of the actual negative cases.
+In simpler terms: It did well in saying when the disease was not present.
+Positive Predictive Value (Precision):
+
+What it means: When the model said the disease was present, it was right about 66.67% of the time.
+In simpler terms: When it made a positive prediction, it was correct two-thirds of the time.
+Agreement Measure:
+Kappa Value (Overall Agreement):
+What it means: The model's performance is somewhat better than random chance, but there's room for improvement.
+In simpler terms: The model does okay, but there's still room to make it better.
+By breaking down the technical terms and providing simple explanations, a naive user can better understand the strengths and weaknesses of the k-NN model.
+
+
+
+
+
+
+
+The plot indicates that the choice of the number of neighbors (k) significantly impacts the accuracy of the k-NN model.
+The increase in accuracy from 5 to almost 7 suggests that a smaller number of neighbors contributes to better performance during that range.
+The drop in accuracy from 7 to 10 may indicate that the model starts to overfit or become too sensitive to noise in the data.
+The subsequent increase in accuracy from 10 to 12 suggests that a slightly larger neighborhood is beneficial for improving model generalization.
+The peak accuracy at k = 13 implies that, within the explored range, this is the optimal number of neighbors for achieving the highest overall accuracy.
+The decrease in accuracy beyond 13 may indicate that including more neighbors begins to introduce more noise or reduce the model's ability to capture underlying patterns.
+The fluctuations observed in smaller ranges (e.g., 14 to 15, 16 to 17) could be influenced by the specific characteristics of the dataset and should be carefully considered during model selection.
+
+selecting an appropriate value for k is crucial in k-NN models, and our analysis suggests that a value around 13 neighbors provides the best balance between capturing patterns and avoiding overfitting.
+
+
+
+
+## Random Forest
+
+```{r, eval=TRUE}
+# Random Forest
+# Hyperparameters to consider: Number of trees, maximum depth of trees, 
+# minimum samples per leaf, and feature subset size.
+
+# Assuming class.gene.subset is your data frame with the response variable "cancer_type"
+# and predictor variables
+
+# Split the data into training and testing sets
+set.seed(2315873)
+index <- createDataPartition(class.gene.subset$cancer_type, p = 0.8, list = FALSE)
+train_data <- class.gene.subset[index, ]
+test_data <- class.gene.subset[-index, ]
+
+# Specify the control parameters for the cross-validation
+ctrl <- trainControl(method = "cv", number = 5)
+
+hyperparameters <- expand.grid(
+  mtry = seq(2, 10, by = 2) # Feature subset size only
+)
+
+# Fit Random Forest model with hyperparameter tuning (corrected)
+rf_model <- train(
+  cancer_type ~ .,
+  data = train_data,
+  method = "rf",
+  trControl = ctrl,
+  tuneGrid = hyperparameters,
+  ntree = 500, # Example of how to set a fixed number of trees
+  metric = "Accuracy"
+)
+# Print the best hyperparameters
+print(rf_model)
+
+# Make predictions on the test set
+predictions <- predict(rf_model, newdata = test_data)
+
+# Evaluate the model performance
+confusion_matrix <- confusionMatrix(predictions, test_data$cancer_type)
+print(confusion_matrix)
+
+```
+
+
+The Random Forest model was evaluated using cross-validated (5-fold) resampling.
+The optimal model was selected based on accuracy, with mtry 
+(number of predictors considered for splitting) set to 6.
+The model achieved an accuracy of 62.56%, slightly higher than the no-information rate (57.14%).
+The confusion matrix shows that the model correctly predicted 3 instances of "Invasive" and 6 instances of "Noninvasive."
+Sensitivity (true positive rate) is 50.00%, and specificity (true negative rate) is 75.00%.
+The model's performance is better in identifying "Invasive" cases.
+
+
+Random Forest and LDA outperform k-NN in accuracy, both achieving an accuracy of 78.57% compared to k-NN's 64.29%
+LDA and Random Forest exhibit higher sensitivity than k-NN, indicating better identification of positive instances (Invasive cancer).
+Random Forest has the highest specificity, indicating superior performance in identifying negative instances (Noninvasive cancer). LDA follows closely, and k-NN has the lowest specificity.
+Random Forest has the highest kappa value, indicating better agreement beyond random chance. k-NN and LDA have lower kappa values, with k-NN having the lowest.
+Random Forest and LDA appear to have better overall performance compared to k-NN.
+
+
+## PLOT RANDOM FOREST
+
+```{r, eval=TRUE}
+if (!requireNamespace("randomForest", quietly = TRUE)) {
+  install.packages("randomForest")
+}
+library(randomForest)
+
+# Plot the variable importance
+randomForest::varImpPlot(rf_model$finalModel, main = "Random Forest - Variable Importance")
+```
+
+The variable importance is measured using the Mean Decrease Gini, which is a metric that represents the contribution of each feature to the homogeneity of the nodes and leaves in the model; in other words, it indicates how much a feature contributes to the model's decision-making process.
+
+The plot has the features on the y-axis and their corresponding Mean Decrease Gini values on the x-axis. Features are usually ranked from top to bottom based on their importance. The most important feature appears at the top with the highest Mean Decrease Gini value, and the importance decreases as you move down the plot. 
+
+From the plot, we can see that there is a significant drop-off in importance after the first few features, suggesting that these top features are the most predictive according to the Random Forest model. Subsequent features contribute much less to improving the purity of the splits made by the trees within the model.
+
+
+
+## Support Vector Machine
+
+```{r, eval=TRUE}
+# Support Vector Machine (SVM)
+# Hyperparameters to consider: Kernel type (linear, polynomial, 
+# radial basis function), regularization parameter (C), and kernel-specific parameters.
+
+# Install and load necessary packages
+if (!requireNamespace("e1071", quietly = TRUE)) {
+  install.packages("e1071")
+}
+if (!requireNamespace("caret", quietly = TRUE)) {
+  install.packages("caret")
+}
+library(e1071)
+library(caret)
+
+# Assuming class.gene.subset is your data frame with the response variable "cancer_type"
+# and predictor variables
+
+# Split your data into training and testing sets
+set.seed(2315873)
+index <- createDataPartition(class.gene.subset$cancer_type, p = 0.8, list = FALSE)
+train_data <- class.gene.subset[index, ]
+test_data <- class.gene.subset[-index, ]
+
+# Fit SVM model with hyperparameter tuning
+svm_model <- tune(
+  svm,
+  cancer_type ~ .,
+  data = train_data,
+  ranges = list(
+    kernel = c("linear", "polynomial", "radial"),
+    cost = 10^(-2:2),
+    degree = c(2, 3),  # Degrees for the polynomial kernel, only relevant when kernel="polynomial"
+    gamma = 10^(-2:2)  # Only relevant when kernel="radial"
+  )
+)
+
+# Extract the best model
+best_svm_model <- svm_model$best.model
+
+# Make predictions on the test set
+test_predictions <- predict(best_svm_model, newdata = test_data)
+
+# Evaluate the model performance
+confusion_matrix <- table(test_predictions, test_data$cancer_type)
+print(confusion_matrix)
+
+# Additional evaluation metrics
+svm_metrics <- confusionMatrix(test_predictions, test_data$cancer_type)
+print(svm_metrics)
+```
+
+The overall accuracy of the model is 50%. This metric represents the proportion of correctly classified instances out of the total.
+The Kappa statistic measures the agreement between the model's predictions and what would be expected by chance. A negative Kappa suggests that the agreement is less than chance.
+Sensitivity measures the proportion of actual positives (Invasive) correctly identified by the model. In this case, the model's sensitivity is very low, indicating that it struggles to correctly identify instances of the "Invasive" class.
+Specificity measures the proportion of actual negatives (Noninvasive) correctly identified by the model. The high specificity indicates that the model performs well in identifying instances of the "Noninvasive" class.
+Precision represents the proportion of predicted positives (Invasive) that are true positives. The low precision indicates that when the model predicts an instance as "Invasive," it is rarely correct.
+Negative Predictive Value represents the proportion of predicted negatives (Noninvasive) that are true negatives. It suggests that the model is relatively better at predicting instances of the "Noninvasive" class.
+The prevalence is the proportion of the "Invasive" class in the dataset.
+Balanced Accuracy takes into account both sensitivity and specificity. In this case, the low balanced accuracy indicates an imbalance in the model's performance across the two classes.
+
+
+
+
+
+
+
+
+Data Overview:
+
+64 samples, 2001 predictors, 2 classes ('Invasive', 'Noninvasive').
+Model Configuration:
+
+Stochastic Gradient Boosting was used with cross-validated resampling (5 folds).
+Model fine-tuning involved adjusting parameters like shrinkage, interaction depth, minimum observations in nodes, and number of trees.
+Model Tuning:
+Parameters Explored:
+
+Various combinations of shrinkage, interaction depth, minimum observations in nodes, and number of trees were tested.
+Optimal Configuration:
+
+The final selected model had parameters: n.trees = 150, interaction.depth = 3, shrinkage = 0.01, and n.minobsinnode = 5.
+Performance Summary:
+Accuracy:
+
+The accuracy of the model on the training data ranged from 56.28% to 73.46%.
+Kappa Statistic:
+
+The Kappa statistic, a measure of agreement beyond chance, ranged from 0.01 to 0.44.
+Selected Model Evaluation:
+Test Set Performance:
+
+The model was applied to a test set, resulting in an accuracy of 78.57%.
+Confusion Matrix:
+
+Predictions were compared to actual values, yielding a confusion matrix.
+Confusion Matrix Analysis:
+Overall Accuracy:
+
+The model correctly predicted the cancer type in 78.57% of cases.
+Sensitivity and Specificity:
+
+Sensitivity (ability to identify positive instances) is 66.67%.
+Specificity (ability to identify negative instances) is 87.50%.
+Positive Predictive Value (Precision):
+
+When the model predicts 'Invasive,' it is correct 80% of the time.
+Kappa Value:
+
+The Kappa value of 0.5532 indicates substantial agreement beyond chance.
+
+
+
+
+
+
+The graph is organized into a grid of nine smaller graphs, each varying by two hyperparameters: minimum number of observations in a node (n minobsinnode) and shrinkage. The n minobsinnode hyperparameter has three levels (5, 10, 15), and shrinkage also has three levels (0.01, 0.10, 0.20). Each smaller graph shows the change in accuracy as the number of boosting iterations increases from 60 to 140.
+
+For all graphs, accuracy improves as the number of boosting iterations increases, which is common as the model has more opportunities to learn from the data. However, the rate of improvement and the final accuracy levels depend on the specific values of n minobsinnode and shrinkage. Generally, smaller shrinkage values seem to be associated with lower accuracy, and higher values of n minobsinnode do not always lead to higher accuracy. 
+
+Interestingly, across all levels of n minobsinnode, a shrinkage value of 0.10 seems to achieve better accuracy than the smaller 0.01, suggesting that a moderate learning rate may be more effective for this dataset. However, a shrinkage of 0.20 does not necessarily outperform 0.10, indicating that too large of a learning rate may not be beneficial.
+
+It's also worth noting that these results are specific to the dataset and the particular setup of the experiment, including the range of the hyperparameters and the number of boosting iterations. Different datasets or changes in the experimental setup might lead to different optimal hyperparameter values.
+
+
+The main observations are:
+
+1. Increasing the number of boosting iterations generally leads to higher accuracy.
+2. Moderate shrinkage (0.10) often performs better than either lower (0.01) or higher (0.20) shrinkage rates.
+3. There is no clear trend that increasing the minimum number of observations in a node (5, 10, or 15) consistently improves accuracy.
+
+These results suggest that for this specific dataset and model setup, a moderate learning rate and a careful choice of the minimum number of observations in a node are important for model accuracy.
+
+
+
+
+## Decision Tree
+
+```{r, eval=TRUE}
+# Decision Tree
+# Hyperparameter: max_depth, min_samples_split, min_samples_leaf, max_features
+#criterion: ("gini" or "entropy"),  splitter ("best" or "random").
+# ccp_alpha: The complexity parameter used for cost-complexity pruning.
+# min_impurity_decrease: The minimum impurity decrease required for a split.
+# class_weight: Weight assigned to classes to balance class distribution.
+
+library(caret)
+library(doParallel)
+
+# Set up parallel processing
+registerDoParallel(cores = detectCores())
+
+# Preprocess and split your dataset
+set.seed(2315873)
+index <- createDataPartition(class.gene.subset$cancer_type, p = 0.8, list = FALSE)
+train_data <- class.gene.subset[index, ]
+test_data <- class.gene.subset[-index, ]
+
+ctrl <- trainControl(method = "cv", number = 3, allowParallel = TRUE)  # Reduced CV folds
+
+# Simplified hyperparameter grid
+dt_grid <- expand.grid(
+  cp = c(0.01, 0.1)
+ 
+)
+
+# Train model
+dt_model <- train(
+  cancer_type ~ .,
+  data = train_data,
+  method = "rpart",
+  trControl = ctrl,
+  tuneGrid = dt_grid
+)
+
+# Evaluate
+predictions <- predict(dt_model, newdata = test_data)
+confusion_matrix <- confusionMatrix(predictions, test_data$cancer_type)
+print(confusion_matrix)
+```
+
+
+
+
+
+```{r, eval=TRUE}
+# Plot for Decision Tree
+
+# Install and load necessary packages
+if (!requireNamespace("rpart.plot", quietly = TRUE)) {
+  install.packages("rpart.plot")
+}
+library(rpart.plot)
+
+# Plot the decision tree
+prp(dt_model$finalModel, main = "Decision Tree - Pruned", extra = 1)
+
+# Print the confusion matrix
+print(confusion_matrix)
+
+```
+
+
+Accuracy: 100%
+Sensitivity (True Positive Rate): 100%
+Specificity (True Negative Rate): 100%
+Positive Predictive Value (Precision): 100%
+Negative Predictive Value: 100%
+These results indicate that the model has correctly classified all instances, achieving perfect accuracy. Both sensitivity and specificity are at their highest possible values, and there are no false positives or false negatives.
+
+The result are similar with the logistic regression. So on the basis of accuracy the logistic regression and decision trees are the best model for our dataset.
+
+
+
+
+### END 
+
+
+
